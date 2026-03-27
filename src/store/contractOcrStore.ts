@@ -1,0 +1,133 @@
+import { create } from 'zustand'
+import type { UploadImageItem, UserPlan, ChatMessage } from '@/types/contractOcr'
+import { nanoid } from 'nanoid'
+
+const MAX_FREE_IMAGES = 10
+const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+const MAX_FILE_SIZE_MB = 15
+
+type ContractOcrStore = {
+  userPlan: UserPlan
+  items: UploadImageItem[]
+  messages: ChatMessage[]
+  isRecognizing: boolean
+
+  addImages: (files: File[]) => { added: number; errors: string[] }
+  removeImage: (id: string) => void
+  clearAll: () => void
+  updateOcrText: (id: string, text: string) => void
+  updateOcrStatus: (id: string, status: UploadImageItem['ocrStatus'], text?: string, errorMsg?: string) => void
+  setRecognizing: (v: boolean) => void
+  addMessage: (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => void
+  setUserPlan: (plan: UserPlan) => void
+  reorderItems: (items: UploadImageItem[]) => void
+}
+
+export const useContractOcrStore = create<ContractOcrStore>((set, get) => ({
+  userPlan: { isPro: false },
+  items: [],
+  messages: [
+    {
+      id: 'welcome',
+      role: 'system',
+      content: '你好！请上传需要识别的合同图片，支持 JPG、PNG、WEBP 格式，单文件最大 15MB。普通用户最多上传 10 张图片。',
+      timestamp: new Date(),
+    },
+  ],
+  isRecognizing: false,
+
+  addImages: (files) => {
+    const { items, userPlan } = get()
+    const errors: string[] = []
+    const validFiles: File[] = []
+    const currentCount = items.length
+
+    for (const file of files) {
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        errors.push(`${file.name}：格式不支持，请上传 JPG/PNG/WEBP`)
+        continue
+      }
+      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+        errors.push(`${file.name}：文件超过 ${MAX_FILE_SIZE_MB}MB 限制`)
+        continue
+      }
+      validFiles.push(file)
+    }
+
+    const limit = userPlan.isPro ? Infinity : MAX_FREE_IMAGES
+    const available = Math.max(0, limit - currentCount)
+
+    const toAdd = validFiles.slice(0, available)
+    const blocked = validFiles.slice(available)
+
+    if (blocked.length > 0) {
+      errors.push(`已达到 ${MAX_FREE_IMAGES} 张上限，${blocked.length} 张未添加`)
+    }
+
+    const newItems: UploadImageItem[] = toAdd.map((file, idx) => ({
+      id: nanoid(),
+      file,
+      previewUrl: URL.createObjectURL(file),
+      order: currentCount + idx,
+      ocrStatus: 'idle',
+      ocrText: '',
+    }))
+
+    set((state) => ({ items: [...state.items, ...newItems] }))
+
+    return { added: toAdd.length, errors }
+  },
+
+  removeImage: (id) => {
+    set((state) => {
+      const updated = state.items
+        .filter((item) => item.id !== id)
+        .map((item, idx) => ({ ...item, order: idx }))
+      return { items: updated }
+    })
+  },
+
+  clearAll: () => {
+    const { items } = get()
+    items.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+    set({ items: [] })
+  },
+
+  updateOcrText: (id, text) => {
+    set((state) => ({
+      items: state.items.map((item) =>
+        item.id === id ? { ...item, ocrText: text } : item
+      ),
+    }))
+  },
+
+  updateOcrStatus: (id, status, text, errorMsg) => {
+    set((state) => ({
+      items: state.items.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              ocrStatus: status,
+              ...(text !== undefined ? { ocrText: text } : {}),
+              ...(errorMsg !== undefined ? { errorMsg } : {}),
+            }
+          : item
+      ),
+    }))
+  },
+
+  setRecognizing: (v) => set({ isRecognizing: v }),
+
+  addMessage: (msg) => {
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        { ...msg, id: nanoid(), timestamp: new Date() },
+      ],
+    }))
+  },
+
+  setUserPlan: (plan) => set({ userPlan: plan }),
+
+  reorderItems: (items) => set({ items }),
+}))
