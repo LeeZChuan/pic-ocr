@@ -104,6 +104,11 @@ type UploadImageItem = {
   - 后端负责 OCR 调用、会员校验、任务编排、日志审计。
 - 收益：稳定性、可观测性、可运营性更好。
 
+### RapidOCR 在项目中的定位
+- `RapidOCR` 是 OCR 引擎，不是“完整后端架构”。
+- 你看到的 Python 脚本属于本地离线识别示例，用于快速验证识别效果。
+- 真正上线时建议把 RapidOCR 作为后端 `ocr-service` 的一个引擎实现，通过 API 给前端调用。
+
 ## 6.2 本期推荐技术栈（前端优先）
 - 前端框架：React + TypeScript（沿用当前项目）。
 - 状态管理：Zustand/Redux（二选一，MVP 用 Zustand 更轻）。
@@ -113,13 +118,31 @@ type UploadImageItem = {
   - `pdf`: `jspdf` + `html2canvas`（或 `pdf-lib`）。
 - OCR：
   - 纯前端：`tesseract.js`（MVP）；
-  - 若接服务端：封装 `POST /ocr/batch`。
+  - 若接服务端：后端 `RapidOCR (Python)` + 前端封装 `POST /ocr/jobs`。
 
-## 7. API 约定（为后续后端预留）
+## 6.3 前后端架构设计（便于后续扩展）
+- 前端（Web）：
+  - 负责上传交互、识别结果编辑、导出触发、状态展示；
+  - 不负责会员权限最终校验。
+- API/BFF：
+  - 负责鉴权、配额校验、路由编排、统一错误处理。
+- OCR服务（Python）：
+  - 使用 RapidOCR 做识别；
+  - 负责预处理、结果标准化、重试。
+- 导出服务：
+  - 统一生成 docx/pdf（可先前端导出，后续切后端）。
+- 基础设施：
+  - 对象存储（图片、导出文件）；
+  - 数据库（任务状态、识别结果、导出记录）；
+  - Redis/队列（异步任务）。
+
+## 7. API 约定（前后端分层版）
 - `GET /api/user/plan` -> `{ isPro: boolean }`
-- `POST /api/ocr/batch` -> 入参图片数组，返回按顺序的识别结果数组
-- `POST /api/export/docx`（可选）-> 返回文件流
-- `POST /api/export/pdf`（可选）-> 返回文件流
+- `POST /api/upload/images` -> 上传返回 `fileIds`
+- `POST /api/ocr/jobs` -> 创建识别任务，返回 `jobId`
+- `GET /api/ocr/jobs/:jobId` -> 轮询任务状态与结果
+- `POST /api/export/jobs` -> 创建导出任务，返回 `jobId`
+- `GET /api/export/jobs/:jobId` -> 返回导出状态与下载链接
 
 > 说明：若本期纯前端，可先用本地 Mock 实现同样的数据结构，后续无缝切换。
 
