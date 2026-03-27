@@ -1,5 +1,3 @@
-import { supabase } from '@/lib/supabase'
-
 export type OcrResult = {
   text: string
   confidence?: number
@@ -9,14 +7,12 @@ async function runOcrViaEdgeFunction(file: File): Promise<OcrResult> {
   const formData = new FormData()
   formData.append('image', file)
 
-  const { data: { session } } = await supabase.auth.getSession()
-
   const response = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ocr-process`,
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${session?.access_token ?? import.meta.env.VITE_SUPABASE_SUPABASE_ANON_KEY}`,
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
       },
       body: formData,
     }
