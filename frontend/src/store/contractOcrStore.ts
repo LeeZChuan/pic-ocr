@@ -19,6 +19,7 @@ type ContractOcrStore = {
   setRecognizing: (v: boolean) => void
   setUserPlan: (plan: UserPlan) => void
   reorderItems: (items: UploadImageItem[]) => void
+  moveItem: (activeId: string, overId: string, position: 'before' | 'after') => void
 }
 
 export const useContractOcrStore = create<ContractOcrStore>((set, get) => ({
@@ -110,5 +111,33 @@ export const useContractOcrStore = create<ContractOcrStore>((set, get) => ({
 
   setUserPlan: (plan) => set({ userPlan: plan }),
 
-  reorderItems: (items) => set({ items }),
+  reorderItems: (items) =>
+    set({
+      items: items.map((item, idx) => ({ ...item, order: idx })),
+    }),
+
+  moveItem: (activeId, overId, position) => {
+    set((state) => {
+      const sorted = [...state.items].sort((a, b) => a.order - b.order)
+      const fromIndex = sorted.findIndex((i) => i.id === activeId)
+      const toIndex = sorted.findIndex((i) => i.id === overId)
+
+      if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) {
+        return {}
+      }
+
+      const [moved] = sorted.splice(fromIndex, 1)
+
+      let insertIndex = toIndex
+      if (fromIndex < toIndex) insertIndex -= 1
+      if (position === 'after') insertIndex += 1
+      insertIndex = Math.max(0, Math.min(insertIndex, sorted.length))
+
+      sorted.splice(insertIndex, 0, moved)
+
+      return {
+        items: sorted.map((item, idx) => ({ ...item, order: idx })),
+      }
+    })
+  },
 }))

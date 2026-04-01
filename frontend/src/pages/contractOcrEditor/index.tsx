@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, GripVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { OcrCard } from './components/OcrCard'
 import { ExportPanel } from './components/ExportPanel'
@@ -8,14 +8,17 @@ import { ImagePreviewModal } from '../contractOcrUpload/components/ImagePreviewM
 import { useContractOcrStore } from '@/store/contractOcrStore'
 import { runOcr } from '@/services/ocrService'
 import { notifyError } from '@/utils/notify'
+import { cn } from '@/lib/utils'
 import type { UploadImageItem } from '@/types/contractOcr'
 
 export default function ContractOcrEditorPage() {
   const navigate = useNavigate()
   const [previewItem, setPreviewItem] = useState<UploadImageItem | null>(null)
   const hasStarted = useRef(false)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
 
-  const { items, updateOcrText, updateOcrStatus, setRecognizing } = useContractOcrStore()
+  const { items, updateOcrText, updateOcrStatus, setRecognizing, moveItem } = useContractOcrStore()
 
   useEffect(() => {
     if (items.length === 0) {
@@ -71,6 +74,55 @@ export default function ContractOcrEditorPage() {
 
   const sortedItems = [...items].sort((a, b) => a.order - b.order)
 
+  const handleDragStart = (id: string) => (e: React.DragEvent) => {
+    setDraggingId(id)
+    setDragOver(null)
+    try {
+      e.dataTransfer.setData('text/plain', id)
+      e.dataTransfer.effectAllowed = 'move'
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleDragEnd = () => {
+    setDraggingId(null)
+    setDragOver(null)
+  }
+
+  const handleDragOver = (overId: string) => (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+
+    const activeId = draggingId ?? e.dataTransfer.getData('text/plain')
+    if (!activeId || activeId === overId) {
+      setDragOver(null)
+      return
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect()
+    const isAfter = e.clientY - rect.top > rect.height / 2
+    setDragOver({ id: overId, position: isAfter ? 'after' : 'before' })
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = (overId: string) => (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+
+    const activeId = e.dataTransfer.getData('text/plain') || draggingId
+    if (!activeId || activeId === overId) {
+      setDragOver(null)
+      setDraggingId(null)
+      return
+    }
+
+    const position =
+      dragOver?.id === overId ? dragOver.position : 'before'
+
+    moveItem(activeId, overId, position)
+    setDragOver(null)
+    setDraggingId(null)
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-10 bg-card border-b border-border px-6 py-4">
@@ -100,15 +152,50 @@ export default function ContractOcrEditorPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 pb-32 space-y-4">
-        {sortedItems.map((item) => (
-          <OcrCard
-            key={item.id}
-            item={item}
-            onTextChange={updateOcrText}
-            onRetry={handleRetry}
-            onPreview={setPreviewItem}
-          />
-        ))}
+        {sortedItems.map((item) => {
+          const isDragging = draggingId === item.id
+          const isOver = dragOver?.id === item.id
+          const showBefore = isOver && dragOver?.position === 'before'
+          const showAfter = isOver && dragOver?.position === 'after'
+
+          return (
+            <div
+              key={item.id}
+              className={cn(
+                'relative',
+                showBefore && "before:content-[''] before:absolute before:left-0 before:right-0 before:top-[-6px] before:h-1 before:rounded-full before:bg-primary",
+                showAfter && "after:content-[''] after:absolute after:left-0 after:right-0 after:bottom-[-6px] after:h-1 after:rounded-full after:bg-primary",
+                isDragging && 'opacity-60'
+              )}
+              onDragOver={handleDragOver(item.id)}
+              onDrop={handleDrop(item.id)}
+            >
+              <OcrCard
+                item={item}
+                onTextChange={updateOcrText}
+                onRetry={handleRetry}
+                onPreview={setPreviewItem}
+                dragHandle={
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={handleDragStart(item.id)}
+                    onDragEnd={handleDragEnd}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }}
+                    className="inline-flex items-center justify-center -ml-2 p-1 rounded text-muted-foreground/70 hover:text-foreground hover:bg-secondary/60 cursor-grab active:cursor-grabbing opacity-40 group-hover/drag:opacity-100 focus-visible:opacity-100"
+                    title="拖拽调整顺序"
+                    aria-label="拖拽调整顺序"
+                  >
+                    <GripVertical className="w-4 h-4" />
+                  </button>
+                }
+              />
+            </div>
+          )
+        })}
       </main>
 
       <ExportPanel items={sortedItems} />

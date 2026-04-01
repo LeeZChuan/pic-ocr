@@ -10,6 +10,7 @@ type Props = {
   onTextChange: (id: string, text: string) => void
   onRetry: (id: string) => void
   onPreview: (item: UploadImageItem) => void
+  dragHandle?: React.ReactNode
 }
 
 const STATUS_CONFIG = {
@@ -35,7 +36,7 @@ const STATUS_CONFIG = {
   },
 }
 
-export function OcrCard({ item, onTextChange, onRetry, onPreview }: Props) {
+export function OcrCard({ item, onTextChange, onRetry, onPreview, dragHandle }: Props) {
   const config = STATUS_CONFIG[item.ocrStatus]
   const StatusIcon = config.icon
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -63,8 +64,9 @@ export function OcrCard({ item, onTextChange, onRetry, onPreview }: Props) {
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/30">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/30 group/drag">
         <div className="flex items-center gap-2">
+          {dragHandle}
           <span className="text-sm font-medium text-foreground">第 {item.order + 1} 页</span>
           <Badge variant={config.badgeVariant} className="gap-1">
             <StatusIcon
