@@ -1,4 +1,6 @@
 import io
+import re
+from typing import Optional, List
 from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
@@ -9,6 +11,45 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.styles import ParagraphStyle
 import os
+from server.config import settings
+
+
+SECTION_RE = re.compile(r"^(一|二|三|四|五|六|七|八|九|十|[0-9]+)[、.]")
+ARTICLE_RE = re.compile(r"^第[一二三四五六七八九十0-9]+条")
+
+
+def _mark_uncertain(line: str, conf: Optional[float]) -> str:
+    if conf is None or conf >= settings.low_confidence_threshold:
+        return line
+    if "：" in line:
+        label = line.split("：", 1)[0]
+        return f"{label}：【待确认】"
+    if ":" in line:
+        label = line.split(":", 1)[0]
+        return f"{label}:【待确认】"
+    return "【待确认】"
+
+
+def _extract_lines(results: List[dict]) -> List[str]:
+    sorted_results = sorted(results, key=lambda r: r.get("order", 0))
+    all_lines: List[str] = []
+    for item in sorted_results:
+        lines = item.get("lines") or []
+        if lines:
+            for line in lines:
+                text = str(line.get("text", "")).strip()
+                if not text:
+                    continue
+                conf = line.get("conf")
+                all_lines.append(_mark_uncertain(text, conf))
+        else:
+            text = str(item.get("text", "")).strip()
+            if text:
+                for raw in text.splitlines():
+                    if raw.strip():
+                        all_lines.append(raw.strip())
+        all_lines.append("")
+    return all_lines
 
 
 def _register_font() -> str:
@@ -67,14 +108,16 @@ def build_pdf(results: list[dict]) -> bytes:
     title = datetime.now().strftime("合同识别结果_%Y%m%d_%H%M")
     story = [Paragraph(title, title_style), Spacer(1, 6 * mm)]
 
-    sorted_results = sorted(results, key=lambda r: r.get("order", 0))
-    for item in sorted_results:
-        order = item.get("order", 0)
-        text = item.get("text", "(空)")
-        story.append(Paragraph(f"第{order + 1}页", heading_style))
-        for line in text.splitlines():
-            story.append(Paragraph(line or " ", body_style))
-        story.append(Spacer(1, 4 * mm))
+    lines = _extract_lines(results)
+    for line in lines:
+        clean = line.strip()
+        if not clean:
+            story.append(Spacer(1, 4 * mm))
+            continue
+        if SECTION_RE.match(clean) or ARTICLE_RE.match(clean):
+            story.append(Paragraph(clean, heading_style))
+            continue
+        story.append(Paragraph(clean, body_style))
 
     doc.build(story)
     return buffer.getvalue()

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from server.api.routes import user_plan, ocr_jobs, export_jobs
+from server.api.routes import user_plan, ocr_jobs, export_jobs, upload_images
 
 app = FastAPI(title="合同 OCR 后台服务", version="1.0.0")
 
@@ -13,6 +13,7 @@ app.add_middleware(
 )
 
 app.include_router(user_plan.router)
+app.include_router(upload_images.router)
 app.include_router(ocr_jobs.router)
 app.include_router(export_jobs.router)
 

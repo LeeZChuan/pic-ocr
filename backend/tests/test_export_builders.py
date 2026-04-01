@@ -4,9 +4,25 @@ from server.services.export.pdf_builder import build_pdf
 
 
 SAMPLE_RESULTS = [
-    {"order": 0, "text": "合同第一页内容\n甲方乙方条款", "status": "success"},
-    {"order": 1, "text": "合同第二页内容\n付款方式说明", "status": "success"},
-    {"order": 2, "text": "", "status": "success"},
+    {
+        "order": 0,
+        "text": "合同第一页内容\n甲方乙方条款",
+        "status": "success",
+        "lines": [
+            {"text": "合同第一页内容", "conf": 0.95, "box": None},
+            {"text": "甲方乙方条款", "conf": 0.32, "box": None},
+        ],
+    },
+    {
+        "order": 1,
+        "text": "合同第二页内容\n付款方式说明",
+        "status": "success",
+        "lines": [
+            {"text": "合同第二页内容", "conf": 0.92, "box": None},
+            {"text": "付款方式说明", "conf": 0.88, "box": None},
+        ],
+    },
+    {"order": 2, "text": "", "status": "success", "lines": []},
 ]
 
 

@@ -17,6 +17,7 @@ export default function ContractOcrEditorPage() {
   const hasStarted = useRef(false)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set())
 
   const { items, updateOcrText, updateOcrStatus, setRecognizing, moveItem } = useContractOcrStore()
 
@@ -157,6 +158,7 @@ export default function ContractOcrEditorPage() {
           const isOver = dragOver?.id === item.id
           const showBefore = isOver && dragOver?.position === 'before'
           const showAfter = isOver && dragOver?.position === 'after'
+          const isCollapsed = collapsedIds.has(item.id)
 
           return (
             <div
@@ -175,6 +177,18 @@ export default function ContractOcrEditorPage() {
                 onTextChange={updateOcrText}
                 onRetry={handleRetry}
                 onPreview={setPreviewItem}
+                collapsed={isCollapsed}
+                onToggleCollapse={() => {
+                  setCollapsedIds((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(item.id)) {
+                      next.delete(item.id)
+                    } else {
+                      next.add(item.id)
+                    }
+                    return next
+                  })
+                }}
                 dragHandle={
                   <button
                     type="button"

@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import Response
 from pydantic import BaseModel
 from server.infra.repository import get_supabase, OcrJobRepository, ExportJobRepository
+from server.infra.storage import StorageService
 from server.services.export.docx_builder import build_docx
 from server.services.export.pdf_builder import build_pdf
 
@@ -105,12 +106,14 @@ async def _process_export_job(job_id: str, results: list[dict], fmt: str) -> Non
     db = get_supabase()
     repo = ExportJobRepository(db)
     repo.update(job_id, "processing")
+    storage = StorageService(db)
 
     try:
         if fmt == "docx":
-            build_docx(results)
+            content = build_docx(results)
         else:
-            build_pdf(results)
-        repo.update(job_id, "success")
+            content = build_pdf(results)
+        url = storage.upload_export(job_id, fmt, content)
+        repo.update(job_id, "success", download_url=url)
     except Exception as e:
         repo.update(job_id, "error", error_msg=str(e))

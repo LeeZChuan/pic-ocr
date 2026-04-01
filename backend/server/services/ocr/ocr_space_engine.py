@@ -1,13 +1,13 @@
 import base64
 import httpx
-from server.services.ocr.engine_interface import OcrEngine
+from server.services.ocr.engine_interface import OcrEngine, OcrResult
 from server.config import settings
 
 
 class OcrSpaceEngine(OcrEngine):
     API_URL = "https://api.ocr.space/parse/image"
 
-    async def recognize(self, image_data: bytes, mime_type: str) -> str:
+    async def recognize(self, image_data: bytes, mime_type: str) -> OcrResult:
         b64 = base64.b64encode(image_data).decode()
         data_url = f"data:{mime_type};base64,{b64}"
 
@@ -33,4 +33,10 @@ class OcrSpaceEngine(OcrEngine):
         if parsed.get("FileParseExitCode") != 1:
             raise RuntimeError(parsed.get("ErrorMessage", "OCR 解析失败"))
 
-        return parsed.get("ParsedText", "")
+        text = parsed.get("ParsedText", "")
+        lines = [
+            {"text": line, "conf": None, "box": None}
+            for line in text.splitlines()
+            if line.strip() != ""
+        ]
+        return {"text": text, "lines": lines, "avg_conf": None}
