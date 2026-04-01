@@ -3,32 +3,61 @@ export type OcrResult = {
   confidence?: number
 }
 
-async function runOcrViaEdgeFunction(file: File): Promise<OcrResult> {
-  const formData = new FormData()
-  formData.append('image', file)
+const POLL_INTERVAL_MS = 500
+const MAX_POLL_TIMES = 60
 
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ocr-process`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      },
-      body: formData,
-    }
-  )
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function runOcrViaBackend(file: File): Promise<OcrResult> {
+  const formData = new FormData()
+  formData.append('images', file)
+
+  const response = await fetch('/api/ocr/jobs', {
+    method: 'POST',
+    body: formData,
+  })
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: 'OCR 请求失败' }))
-    throw new Error(err.error ?? 'OCR 请求失败')
+    const err = await response.json().catch(() => ({ detail: 'OCR 请求失败' }))
+    throw new Error(err.detail ?? 'OCR 请求失败')
   }
 
-  const result = await response.json() as OcrResult
-  return result
+  const job = await response.json() as { id: string }
+  if (!job?.id) {
+    throw new Error('OCR 任务创建失败')
+  }
+
+  for (let i = 0; i < MAX_POLL_TIMES; i += 1) {
+    await sleep(POLL_INTERVAL_MS)
+    const statusRes = await fetch(`/api/ocr/jobs/${job.id}`)
+    if (!statusRes.ok) {
+      continue
+    }
+    const data = await statusRes.json() as {
+      status: string
+      results: Array<{ order: number; text: string; status: string; error_msg?: string }>
+    }
+    if (data.status === 'success') {
+      const first = (data.results || []).sort((a, b) => a.order - b.order)[0]
+      if (!first) return { text: '' }
+      if (first.status === 'error') {
+        throw new Error(first.error_msg ?? '识别失败')
+      }
+      return { text: first.text ?? '' }
+    }
+    if (data.status === 'error') {
+      const first = (data.results || [])[0]
+      throw new Error(first?.error_msg ?? '识别失败')
+    }
+  }
+
+  throw new Error('OCR 超时，请稍后重试')
 }
 
 export async function runOcr(file: File): Promise<OcrResult> {
-  return runOcrViaEdgeFunction(file)
+  return runOcrViaBackend(file)
 }
 
 export async function runOcrBatch(

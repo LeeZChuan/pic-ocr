@@ -7,7 +7,7 @@
 - Web 框架：FastAPI + Uvicorn
 - OCR 引擎：RapidOCR（本地）/ OCR.Space（云）/ Mock
 - 导出：python-docx（docx）、reportlab（pdf）
-- 存储：Supabase Storage（原图与导出文件）
+- 存储：本地文件系统（原图与导出文件）
 - 任务：FastAPI BackgroundTasks（MVP）
 
 ## 目录与文件职责
@@ -20,8 +20,8 @@
   - `export_jobs.py`：导出任务创建与查询
 - `server/services/ocr/*`：OCR 引擎实现与统一接口
 - `server/services/export/*`：docx/pdf 生成逻辑
-- `server/infra/repository.py`：Supabase 数据访问
-- `server/infra/storage.py`：对象存储访问
+- `server/infra/repository.py`：本地内存任务存储（MVP）
+- `server/infra/storage.py`：本地文件存储
 
 ## API 简表
 - `GET /health`：健康检查
@@ -37,9 +37,7 @@
 - `GET /api/export/jobs/{job_id}/download`：直接下载导出文件
 
 ## 环境变量
-- `SUPABASE_URL`：Supabase 项目地址
-- `SUPABASE_SERVICE_ROLE_KEY`：服务端密钥
-- `STORAGE_BUCKET`：对象存储 bucket 名（默认 `ocr-images`）
+- `STORAGE_ROOT`：本地存储目录（默认 `storage`）
 - `OCR_ENGINE`：`auto` | `rapidocr` | `ocr_space` | `mock`
 - `OCR_SPACE_API_KEY`：OCR.Space Key（如使用该引擎）
 - `MAX_FREE_IMAGES`：普通用户最大上传数（默认 10）
@@ -52,9 +50,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-export SUPABASE_URL=...
-export SUPABASE_SERVICE_ROLE_KEY=...
-export STORAGE_BUCKET=ocr-images
+export STORAGE_ROOT=storage
 export OCR_ENGINE=rapidocr
 
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
@@ -65,14 +61,32 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 python3 -m pytest tests
 ```
 
+## 常见问题：pip SSL 证书错误
+如果执行 `pip install -r requirements.txt` 出现 `SSL: CERTIFICATE_VERIFY_FAILED`，可按以下方式处理：
+
+macOS（官方 Python 安装）：
+```bash
+open "/Applications/Python 3.9/Install Certificates.command"
+```
+
+通用方案（使用 certifi）：
+```bash
+python -m pip install --upgrade pip certifi
+export SSL_CERT_FILE=$(python -c "import certifi; print(certifi.where())")
+pip install -r requirements.txt
+```
+
+公司网络/代理环境下临时绕过：
+```bash
+pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
+```
+
 ## 部署流程（Docker）
 ```bash
 cd /Users/edy/Desktop/github-code/pic-ocr/backend
 docker build -t pic-ocr-backend .
 docker run -p 8000:8000 \
-  -e SUPABASE_URL=... \
-  -e SUPABASE_SERVICE_ROLE_KEY=... \
-  -e STORAGE_BUCKET=ocr-images \
+  -e STORAGE_ROOT=storage \
   -e OCR_ENGINE=rapidocr \
   pic-ocr-backend
 ```

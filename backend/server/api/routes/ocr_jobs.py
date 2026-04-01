@@ -3,7 +3,7 @@ from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel
 import httpx
-from server.infra.repository import get_supabase, OcrJobRepository
+from server.infra.repository import OcrJobRepository
 from server.infra.storage import StorageService
 from server.services.ocr.mock_engine import MockOcrEngine
 from server.services.ocr.ocr_space_engine import OcrSpaceEngine
@@ -99,8 +99,7 @@ async def create_ocr_job(
                 detail=f"超过 {settings.max_free_images} 张限制",
             )
 
-    db = get_supabase()
-    repo = OcrJobRepository(db)
+    repo = OcrJobRepository()
     image_count = len(images) if images else len(file_ids or [])
     job = repo.create(user_id=None, image_count=image_count)
     job_id = job["id"]
@@ -111,32 +110,35 @@ async def create_ocr_job(
             data = await img.read()
             image_data.append((i, data, img.content_type or "image/jpeg"))
     else:
-        storage = StorageService(db)
+        storage = StorageService()
         async with httpx.AsyncClient(timeout=30) as client:
             for i, file_id in enumerate(file_ids or []):
                 if isinstance(file_id, str) and file_id.startswith("http"):
                     url = file_id
                 else:
-                    url = storage.get_signed_url(str(file_id))
-                response = await client.get(url)
-                response.raise_for_status()
+                    url = None
+                if url:
+                    response = await client.get(url)
+                    response.raise_for_status()
+                    content = response.content
+                else:
+                    content = storage.read_bytes(str(file_id))
                 mime = _guess_mime(str(file_id))
-                image_data.append((i, response.content, mime))
+                image_data.append((i, content, mime))
 
     background_tasks.add_task(_process_ocr_job, job_id, image_data)
 
     return OcrJobResponse(
         id=job_id,
         status="pending",
-        image_count=len(images),
+        image_count=image_count,
         results=[],
     )
 
 
 @router.get("/jobs/{job_id}", response_model=OcrJobResponse)
 async def get_ocr_job(job_id: str) -> OcrJobResponse:
-    db = get_supabase()
-    repo = OcrJobRepository(db)
+    repo = OcrJobRepository()
     job = repo.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -149,8 +151,7 @@ async def get_ocr_job(job_id: str) -> OcrJobResponse:
 
 
 async def _process_ocr_job(job_id: str, image_data: list[tuple[int, bytes, str]]) -> None:
-    db = get_supabase()
-    repo = OcrJobRepository(db)
+    repo = OcrJobRepository()
     engine = _get_engine()
     repo.update_status(job_id, "processing")
 

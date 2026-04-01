@@ -2,7 +2,6 @@ from uuid import uuid4
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from server.config import settings
-from server.infra.repository import get_supabase
 from server.infra.storage import StorageService
 
 router = APIRouter(prefix="/api/upload", tags=["upload"])
@@ -38,8 +37,7 @@ async def upload_images(
         if size > MAX_SIZE_BYTES:
             raise HTTPException(status_code=400, detail=f"{img.filename}：超过 15MB 限制")
 
-    db = get_supabase()
-    storage = StorageService(db)
+    storage = StorageService()
     batch_id = uuid4().hex
     file_ids: list[str] = []
 
