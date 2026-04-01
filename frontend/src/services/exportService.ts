@@ -1,15 +1,17 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx'
+import { Document, Packer, Paragraph, TextRun } from 'docx'
 import jsPDF from 'jspdf'
 import type { UploadImageItem } from '@/types/contractOcr'
 
-function formatTitle(): string {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  const h = String(now.getHours()).padStart(2, '0')
-  const min = String(now.getMinutes()).padStart(2, '0')
-  return `合同识别结果_${y}${m}${d}_${h}${min}`
+const SECTION_RE = /^(一|二|三|四|五|六|七|八|九|十|[0-9]+)[、.]/
+const ARTICLE_RE = /^第[一二三四五六七八九十0-9]+条/
+const INDENT_TWIPS = 480
+const MARGIN_TOP = 1440
+const MARGIN_BOTTOM = 1440
+const MARGIN_LEFT = 1800
+const MARGIN_RIGHT = 1800
+
+function isSectionTitle(text: string): boolean {
+  return SECTION_RE.test(text) || ARTICLE_RE.test(text)
 }
 
 export function getEmptyPageNumbers(items: UploadImageItem[]): number[] {
@@ -19,43 +21,78 @@ export function getEmptyPageNumbers(items: UploadImageItem[]): number[] {
 }
 
 export async function buildDocx(items: UploadImageItem[]): Promise<Blob> {
-  const title = formatTitle()
-  const children: Paragraph[] = [
-    new Paragraph({
-      text: title,
-      heading: HeadingLevel.HEADING_1,
-    }),
-  ]
+  const children: Paragraph[] = []
 
   const sorted = [...items].sort((a, b) => a.order - b.order)
 
-  for (const item of sorted) {
-    children.push(
-      new Paragraph({
-        text: `第${item.order + 1}页`,
-        heading: HeadingLevel.HEADING_2,
-      })
-    )
+  sorted.forEach((item, idx) => {
     const lines = item.ocrText.split('\n')
-    for (const line of lines) {
+    if (lines.length === 0 || (lines.length === 1 && lines[0].trim() === '')) {
       children.push(
         new Paragraph({
-          children: [new TextRun({ text: line, size: 24 })],
+          children: [new TextRun({ text: '' })],
         })
       )
+    } else {
+      lines.forEach((raw) => {
+        const text = raw.trim()
+        if (!text) {
+          children.push(new Paragraph({ text: '' }))
+          return
+        }
+        const isTitle = isSectionTitle(text)
+        children.push(
+          new Paragraph({
+            indent: isTitle ? undefined : { firstLine: INDENT_TWIPS },
+            children: [
+              new TextRun({
+                text,
+                size: 24,
+                bold: isTitle,
+                font: 'SimSun',
+              }),
+            ],
+          })
+        )
+      })
     }
-    children.push(new Paragraph({ text: '' }))
-  }
+    if (idx < sorted.length - 1) {
+      children.push(new Paragraph({ text: '' }))
+    }
+  })
 
   const doc = new Document({
-    sections: [{ children }],
+    styles: {
+      default: {
+        document: {
+          run: {
+            font: 'SimSun',
+            size: 24,
+          },
+        },
+      },
+    },
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: MARGIN_TOP,
+              bottom: MARGIN_BOTTOM,
+              left: MARGIN_LEFT,
+              right: MARGIN_RIGHT,
+            },
+          },
+        },
+        children,
+      },
+    ],
   })
 
   return Packer.toBlob(doc)
 }
 
 export async function buildPdf(items: UploadImageItem[]): Promise<Blob> {
-  const title = formatTitle()
   const sorted = [...items].sort((a, b) => a.order - b.order)
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
@@ -66,35 +103,45 @@ export async function buildPdf(items: UploadImageItem[]): Promise<Blob> {
   const lineHeight = 7
 
   doc.setFont('helvetica')
-  doc.setFontSize(18)
-  doc.text(title, margin, 25)
+  doc.setFontSize(11)
+  let y = 20
 
-  let y = 40
-
-  for (const item of sorted) {
+  for (let i = 0; i < sorted.length; i += 1) {
+    const item = sorted[i]
     if (y > 260) {
       doc.addPage()
       y = 20
     }
 
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.text(`第${item.order + 1}页`, margin, y)
-    y += lineHeight + 3
-
-    doc.setFontSize(11)
-    doc.setFont('helvetica', 'normal')
-
-    const lines = doc.splitTextToSize(item.ocrText || '(空)', contentWidth) as string[]
-    for (const line of lines) {
-      if (y > 270) {
-        doc.addPage()
-        y = 20
-      }
-      doc.text(line, margin, y)
+    const lines = item.ocrText.split('\n')
+    if (lines.length === 0 || (lines.length === 1 && lines[0].trim() === '')) {
       y += lineHeight
+      continue
     }
-    y += 8
+
+    for (const raw of lines) {
+      const text = raw.trim()
+      if (!text) {
+        y += lineHeight
+        continue
+      }
+      const isTitle = isSectionTitle(text)
+      doc.setFont('helvetica', isTitle ? 'bold' : 'normal')
+      const content = isTitle ? text : `　　${text}`
+      const wrapped = doc.splitTextToSize(content, contentWidth) as string[]
+      for (const line of wrapped) {
+        if (y > 270) {
+          doc.addPage()
+          y = 20
+        }
+        doc.text(line, margin, y)
+        y += lineHeight
+      }
+    }
+
+    if (i < sorted.length - 1) {
+      y += 4
+    }
   }
 
   return doc.output('blob')

@@ -1,15 +1,12 @@
 import io
 import re
 from typing import Optional, List
-from datetime import datetime
 from docx import Document
 from docx.shared import Pt
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml.ns import qn
 from server.config import settings
 
 
-TITLE_CANDIDATE_RE = re.compile(r"^[\u4e00-\u9fffA-Za-z0-9（）()《》【】、·\s]{2,20}$")
 SECTION_RE = re.compile(r"^(一|二|三|四|五|六|七|八|九|十|[0-9]+)[、.]")
 ARTICLE_RE = re.compile(r"^第[一二三四五六七八九十0-9]+条")
 
@@ -44,25 +41,7 @@ def _extract_lines(results: List[dict]) -> List[str]:
                 for raw in text.splitlines():
                     if raw.strip():
                         all_lines.append(raw.strip())
-        all_lines.append("")
     return all_lines
-
-
-def _guess_title(lines: List[str]) -> List[str]:
-    candidates: List[str] = []
-    for line in lines:
-        clean = line.strip()
-        if not clean:
-            continue
-        if "：" in clean or ":" in clean:
-            break
-        if SECTION_RE.match(clean) or ARTICLE_RE.match(clean):
-            break
-        if TITLE_CANDIDATE_RE.match(clean):
-            candidates.append(clean)
-        if len(candidates) >= 2:
-            break
-    return candidates
 
 
 def build_docx(results: list[dict]) -> bytes:
@@ -73,28 +52,6 @@ def build_docx(results: list[dict]) -> bytes:
     style.font.size = Pt(12)
 
     lines = _extract_lines(results)
-    title_lines = _guess_title(lines)
-    if title_lines:
-        for line in title_lines:
-            p = doc.add_paragraph(line)
-            p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-            run = p.runs[0]
-            run.bold = True
-            run.font.size = Pt(18)
-            run.font.name = "黑体"
-            run._element.rPr.rFonts.set(qn("w:eastAsia"), "黑体")
-        doc.add_paragraph("")
-        lines = lines[len(title_lines):]
-    else:
-        title = datetime.now().strftime("合同识别结果_%Y%m%d_%H%M")
-        p = doc.add_paragraph(title)
-        p.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-        run = p.runs[0]
-        run.bold = True
-        run.font.size = Pt(16)
-        run.font.name = "黑体"
-        run._element.rPr.rFonts.set(qn("w:eastAsia"), "黑体")
-        doc.add_paragraph("")
 
     for line in lines:
         if not line.strip():

@@ -1,7 +1,6 @@
 import io
 import re
 from typing import Optional, List
-from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -81,13 +80,6 @@ def build_pdf(results: list[dict]) -> bytes:
         bottomMargin=20 * mm,
     )
 
-    title_style = ParagraphStyle(
-        "title",
-        fontName=font_name,
-        fontSize=16,
-        spaceAfter=12,
-        alignment=TA_LEFT,
-    )
     heading_style = ParagraphStyle(
         "heading",
         fontName=font_name,
@@ -105,8 +97,7 @@ def build_pdf(results: list[dict]) -> bytes:
         alignment=TA_LEFT,
     )
 
-    title = datetime.now().strftime("合同识别结果_%Y%m%d_%H%M")
-    story = [Paragraph(title, title_style), Spacer(1, 6 * mm)]
+    story = []
 
     lines = _extract_lines(results)
     for line in lines:
